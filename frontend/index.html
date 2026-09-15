@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>LeadFlow</title>
+<style>
+  :root { --border: #ddd; --muted: #666; --accent: #2563eb; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 24px; background: #fafafa; color: #1a1a1a; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .panel { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .panel h2 { font-size: 14px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input, select, textarea, button { font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; }
+  button { background: var(--accent); color: #fff; border: none; cursor: pointer; padding: 7px 14px; }
+  button.secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  tr:hover { background: #f5f7ff; cursor: pointer; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: #eef2ff; color: #4338ca; }
+  .stat { display: inline-block; margin-right: 16px; }
+  .stat b { font-size: 18px; display: block; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  #detail { display: none; }
+  #detail.open { display: block; }
+  .close-btn { float: right; background: none; color: var(--muted); font-size: 18px; padding: 0 6px; }
+  .group { border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+  .conf-high { border-left: 4px solid #dc2626; }
+  .conf-mid { border-left: 4px solid #d97706; }
+  .conf-low { border-left: 4px solid #65a30d; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .field input, .field textarea, .field select { width: 100%; }
+</style>
+</head>
+<body>
+
+<h1>LeadFlow</h1>
+<div class="sub">Minimal frontend over the LeadFlow API — set the base URL below if not running on localhost:8000</div>
+
+<div class="panel">
+  <div class="row">
+    <label class="muted">API base:</label>
+    <input id="apiBase" value="http://localhost:8000" style="width:220px" />
+    <button class="secondary" onclick="loadDashboard()">Refresh dashboard</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>Dashboard</h2>
+  <div id="dashboard" class="row">Loading…</div>
+</div>
+
+<div class="panel">
+  <h2>Leads</h2>
+  <div class="row" style="margin-bottom:8px">
+    <input id="qSearch" placeholder="search name / company / email" style="width:220px" />
+    <input id="fStatus" placeholder="status" style="width:110px" />
+    <input id="fOwner" placeholder="owner" style="width:110px" />
+    <input id="fCountry" placeholder="country" style="width:110px" />
+    <button onclick="loadLeads()">Filter</button>
+    <button class="secondary" onclick="clearFilters()">Clear</button>
+    <a id="exportLink" href="#" target="_blank"><button class="secondary" type="button">Export CSV</button></a>
+  </div>
+  <div class="muted" id="leadCount"></div>
+  <table>
+    <thead><tr><th>Name</th><th>Company</th><th>Status</th><th>Owner</th><th>Country</th><th>Channel</th></tr></thead>
+    <tbody id="leadRows"></tbody>
+  </table>
+  <div class="row" style="margin-top:10px">
+    <button class="secondary" onclick="prevPage()">◀ Prev</button>
+    <span class="muted" id="pageInfo"></span>
+    <button class="secondary" onclick="nextPage()">Next ▶</button>
+  </div>
+</div>
+
+<div class="panel" id="detail">
+  <button class="close-btn" onclick="closeDetail()">✕</button>
+  <h2>Lead detail</h2>
+  <div id="detailBody"></div>
+</div>
+
+<div class="panel">
+  <h2>Ingest a new lead (website form submission)</h2>
+  <div class="row">
+    <input id="inName" placeholder="Full name" style="width:150px" />
+    <input id="inEmail" placeholder="Email" style="width:180px" />
+    <input id="inPhone" placeholder="Phone" style="width:130px" />
+    <input id="inCompany" placeholder="Company" style="width:150px" />
+    <input id="inCountry" placeholder="Country" style="width:120px" />
+    <input id="inMessage" placeholder="Note / message" style="width:220px" />
+    <button onclick="ingestLead()">Ingest</button>
+  </div>
+  <div id="ingestResult" class="muted" style="margin-top:8px"></div>
+</div>
+
+<div class="panel">
+  <h2>Duplicate candidates</h2>
+  <button onclick="runDedup()">Run dedup scan</button>
+  <span class="muted" id="dedupStatus"></span>
+  <div id="dedupGroups" style="margin-top:12px"></div>
+</div>
+
+<script>
+let offset = 0;
+const limit = 25;
+
+function base() { return document.getElementById('apiBase').value.replace(/\/$/, ''); }
+
+function currentFilters() {
+  const params = new URLSearchParams();
+  const q = document.getElementById('qSearch').value.trim();
+  const status = document.getElementById('fStatus').value.trim();
+  const owner = document.getElementById('fOwner').value.trim();
+  const country = document.getElementById('fCountry').value.trim();
+  if (q) params.set('q', q);
+  if (status) params.set('status', status);
+  if (owner) params.set('owner', owner);
+  if (country) params.set('country', country);
+  return params;
+}
+
+async function loadLeads() {
+  offset = 0;
+  await fetchLeads();
+}
+
+async function fetchLeads() {
+  const params = currentFilters();
+  params.set('limit', limit);
+  params.set('offset', offset);
+  document.getElementById('exportLink').href = `${base()}/leads/export?${currentFilters().toString()}`;
+
+  const res = await fetch(`${base()}/leads?${params.toString()}`);
+  if (!res.ok) { document.getElementById('leadCount').textContent = 'Error loading leads — check API base URL / CORS.'; return; }
+  const data = await res.json();
+
+  document.getElementById('leadCount').textContent = `${data.total} total leads`;
+  document.getElementById('pageInfo').textContent = `${offset + 1}–${Math.min(offset + limit, data.total)} of ${data.total}`;
+
+  const rows = data.leads.map(l => `
+    <tr onclick="openDetail(${l.id})">
+      <td>${l.full_name || '—'}</td>
+      <td>${l.company_name || '—'}</td>
+      <td><span class="badge">${l.status || '—'}</span></td>
+      <td>${l.contact_owner || '—'}</td>
+      <td>${l.country || '—'}</td>
+      <td>${l.extracted_channel || '—'}</td>
+    </tr>`).join('');
+  document.getElementById('leadRows').innerHTML = rows || '<tr><td colspan="6" class="muted">No leads match these filters.</td></tr>';
+}
+
+function clearFilters() {
+  ['qSearch','fStatus','fOwner','fCountry'].forEach(id => document.getElementById(id).value = '');
+  loadLeads();
+}
+
+function prevPage() { if (offset >= limit) { offset -= limit; fetchLeads(); } }
+function nextPage() { offset += limit; fetchLeads(); }
+
+async function openDetail(id) {
+  const res = await fetch(`${base()}/leads/${id}`);
+  const l = await res.json();
+  document.getElementById('detailBody').innerHTML = `
+    <div class="field"><label>Name</label><div>${l.full_name || '—'} — ${l.job_title || ''}</div></div>
+    <div class="field"><label>Email / Phone</label><div>${l.email || '—'} · ${l.phone_number || '—'}</div></div>
+    <div class="field"><label>Company</label><div>${l.company_name || '—'} (${l.country || '—'})</div></div>
+    <div class="field"><label>Status</label><input id="editStatus" value="${l.status || ''}" /></div>
+    <div class="field"><label>Owner</label><input id="editOwner" value="${l.contact_owner || ''}" /></div>
+    <div class="field"><label>Notes</label><textarea id="editNotes" rows="3">${l.notes || ''}</textarea></div>
+    <div class="field"><label>Extracted source</label><div>${l.extracted_channel || '—'}: ${l.extracted_detail || '—'}</div></div>
+    <button onclick="saveDetail(${l.id})">Save changes</button>
+    <span id="saveStatus" class="muted"></span>
+  `;
+  document.getElementById('detail').classList.add('open');
+  document.getElementById('detail').dataset.leadId = id;
+}
+
+function closeDetail() { document.getElementById('detail').classList.remove('open'); }
+
+async function saveDetail(id) {
+  const payload = {
+    status: document.getElementById('editStatus').value,
+    contact_owner: document.getElementById('editOwner').value,
+    notes: document.getElementById('editNotes').value,
+  };
+  const res = await fetch(`${base()}/leads/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  document.getElementById('saveStatus').textContent = res.ok ? 'Saved ✓' : 'Save failed';
+  if (res.ok) fetchLeads();
+}
+
+async function ingestLead() {
+  const payload = {
+    name: document.getElementById('inName').value,
+    email: document.getElementById('inEmail').value,
+    phone: document.getElementById('inPhone').value,
+    company: document.getElementById('inCompany').value,
+    country: document.getElementById('inCountry').value,
+    message: document.getElementById('inMessage').value,
+  };
+  const res = await fetch(`${base()}/leads/ingest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  document.getElementById('ingestResult').textContent = res.ok
+    ? `${data.action === 'created' ? 'Created new lead' : 'Matched & updated existing lead'} — id ${data.lead.id}, channel: ${data.lead.extracted_channel}`
+    : 'Ingest failed';
+  if (res.ok) { loadLeads(); loadDashboard(); }
+}
+
+async function runDedup() {
+  document.getElementById('dedupStatus').textContent = 'Scanning…';
+  const res = await fetch(`${base()}/leads/dedupe-candidates`, { method: 'POST' });
+  const data = await res.json();
+  document.getElementById('dedupStatus').textContent = `${data.group_count} candidate groups found`;
+
+  document.getElementById('dedupGroups').innerHTML = data.groups.slice(0, 30).map(g => {
+    const cls = g.confidence >= 0.85 ? 'conf-high' : g.confidence >= 0.65 ? 'conf-mid' : 'conf-low';
+    const members = g.leads.map(l => `${l.full_name || '—'} · ${l.company_name || '—'} · ${l.email || '—'}`).join('<br/>');
+    return `<div class="group ${cls}">
+      <b>Confidence: ${(g.confidence * 100).toFixed(0)}%</b>
+      <span class="muted"> — ${g.reasons.join(', ')}</span>
+      <div style="margin-top:6px">${members}</div>
+    </div>`;
+  }).join('') || '<div class="muted">No candidates found.</div>';
+}
+
+async function loadDashboard() {
+  const res = await fetch(`${base()}/dashboard`);
+  if (!res.ok) { document.getElementById('dashboard').textContent = 'Could not load dashboard.'; return; }
+  const data = await res.json();
+  const statusStats = Object.entries(data.by_status).map(([k,v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+  const channelStats = Object.entries(data.by_source_channel).map(([k,v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+  document.getElementById('dashboard').innerHTML = `
+    <div style="width:100%">
+      <div class="muted" style="margin-bottom:6px">Total: ${data.total_leads} — by status</div>
+      <div class="row">${statusStats}</div>
+      <div class="muted" style="margin:12px 0 6px">by source channel</div>
+      <div class="row">${channelStats}</div>
+    </div>`;
+}
+
+loadLeads();
+loadDashboard();
+</script>
+</body>
+</html>

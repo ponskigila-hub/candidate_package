@@ -4,6 +4,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -32,6 +33,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="LeadFlow", description="Mini lead management API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # local take-home scope; would restrict in a real deployment
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/leads")
