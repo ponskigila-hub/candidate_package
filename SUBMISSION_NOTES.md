@@ -1,11 +1,4 @@
-# Submission Notes
-
-This file is separate from `README.md` on purpose: `README.md` documents the
-project itself (setup, endpoints, design rationale) the way any repo README
-would. This file is context for whoever's reviewing the *submission* —
-process, tools used, and what I'd want to be asked about.
-
-## How this was built
+# How this was built
 
 I used an AI coding assistant throughout, given the one-week/6-8hr scope and
 my own time constraints this week. I want to be upfront about that rather
@@ -79,6 +72,5 @@ Delete `leadflow.db` to reload the seed data from scratch on next startup.
 
 ## What's in the submission
 
-- `README.md` — project documentation (setup, endpoints, design decisions)
 - `app/`, `tests/`, `data/`, `frontend/` — the implementation
 - This file
